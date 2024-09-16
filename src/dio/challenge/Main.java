@@ -37,7 +37,6 @@ interface Account {
     }
 }
 
-
 class RepositoryInMemory implements Repository {
     final private Map<Integer, Account> database;
 
@@ -210,8 +209,45 @@ class Presenter {
         }
     }
 
-    public void presenterLogin(Repository repository) {
-	//TODO
+    public void login(Repository repository) {
+        int numberAccount;
+        Optional<Account> maybeAccount;
+	Account account;
+        String pass;
+
+        console.printf("Login:\n");
+	console.printf("Number Account: ");
+	numberAccount = this.readNumberUnsigned();
+	if (numberAccount < 0) {
+            console.printf("Account not found\n");
+	    return ;
+        }
+	maybeAccount = repository.getAccountByNumber(numberAccount);
+
+	if (!maybeAccount.isPresent()) {
+            console.printf("Account not found\n");
+	    return ;
+        }
+	account = maybeAccount.get();
+        pass = this.readPass("Enter 4 digit number password");
+        if (!account.verifyPass(pass)) {
+            console.printf("Invalid password\n");
+	    return ;
+	}
+	this.userMenu(account, repository);
+    }
+
+    private int promptUserMenu() {
+	return 0;
+    }
+
+    public void userMenu(Account account, Repository repository) {
+	console.printf("Bem Vindo %s\n", account.getUserName());
+
+	int choice = -1;
+        while (choice != 0) {
+            choice = this.promptUserMenu();
+        }
     }
 }
 
@@ -219,7 +255,6 @@ class Main {
     public static void main(String[] args) {
         final Presenter presenter = new Presenter(System.console());
         final Repository repository = new RepositoryInMemory(new HashMap<>());
-        char s[] = null;
 
         presenter.displayWellcome();
         int choice = -1;
