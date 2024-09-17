@@ -4,6 +4,7 @@ import java.io.Console;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.Optional;
+import java.io.IOException;
 import org.mindrot.jbcrypt.BCrypt;
 
 
@@ -249,23 +250,27 @@ class Presenter {
             choice = this.promptUserMenu();
         }
     }
+
+    public void mainMenu(Repository repository) {
+	this.displayWellcome();
+        int choice = -1;
+        while (choice != 0) {
+            choice = this.promptStartMenu();
+	    if (choice == 1) {
+		this.login(repository);
+	    } else if (choice == 2) {
+                this.promptNewAccount(repository);
+            }
+        }
+        console.printf("Bye\n");
+    } 
 }
 
 class Main {
     public static void main(String[] args) {
         final Presenter presenter = new Presenter(System.console());
         final Repository repository = new RepositoryInMemory(new HashMap<>());
-
-        presenter.displayWellcome();
-        int choice = -1;
-        while (choice != 0) {
-            choice = presenter.promptStartMenu();
-	    if (choice == 1) {
-		presenter.login(repository);
-	    } else if (choice == 2) {
-                presenter.promptNewAccount(repository);
-            }
-        }
-        System.out.println("Bye");
+	
+        presenter.mainMenu(repository);
     }
 }

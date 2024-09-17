@@ -2,28 +2,46 @@ OS := $(shell uname)
 CC := javac
 
 ifeq ($(OS), Windows_NT)
-	SEP := ;
+	SEP:=;
 else
-	SEP := :
+	SEP:=:
 endif
 
 SRC_DIR := ./src
 
-SRC := 	$(shell find . -name '*.java')
+SRC := $(shell find ./src/main -name '*.java')
+SRC_TEST := $(shell find ./src/test -name '*.java')
 
 BUILD_DIR := ./build
 
-OBJS  := $(patsubst %.java, %.class, $(SRC))
+OBJS  := $(patsubst $(SRC_DIR)/%.java, $(BUILD_DIR)/%.class, $(SRC))
+OBJS_TEST := $(patsubst $(SRC_DIR)/%.java, $(BUILD_DIR)/%.class, $(SRC_TEST))
 LIBS := $(shell find ./lib -name '*.jar')
+TEST_LIBS := $(wildcard ./testlib/*.jar)
 
-CP_OBJS := $(SRC_DIR)$(addprefix $(SEP), $(LIBS)) 
-CP_BUILD := $(BUILD_DIR)$(addprefix $(SEP), $(LIBS)) 
+CP_OBJS := $(shell echo $(SRC_DIR)$(addprefix $(SEP), $(LIBS)) | tr -d ' ')
+CP_BUILD := $(shell echo $(BUILD_DIR)$(addprefix $(SEP), $(LIBS)) | tr -d ' ')
+CP_TEST := $(shell echo $(CP_BUILD)$(addprefix $(SEP), $(TEST_LIBS)) | tr -d ' ')
 
 all: etags $(OBJS)
 	java -cp  $(CP_BUILD) dio.challenge.Main
 
-$(OBJS) : %.class : %.java
+run-jar: jar
+	java -jar $(BUILD_DIR)/BankAccount.jar
+
+jar: etags $(OBJS)
+	 jar --create --file $(BUILD_DIR)/BankAccount.jar \
+	--main-class dio.challenge.Main -C build .
+
+$(OBJS) : $(BUILD_DIR)/%.class : $(SRC_DIR)/%.java
 	$(CC) -cp $(CP_OBJS) $< -d $(BUILD_DIR)
+
+$(OBJS_TEST) : $(BUILD_DIR)/%.class : $(SRC_DIR)/%.java
+	$(CC) -cp $(CP_TEST) $< -d $(BUILD_DIR)
+
+test: $(OBJS) $(OBJS_TEST)
+#java -cp $(CP_TEST) org.junit.runner.JUnitCore dio.challenge.TestMain
+	java -cp $(CP_TEST)  org.junit.runner.JUnitCore dio.challenge.TestMain
 
 etags:
 	etags $(SRC)
