@@ -1,10 +1,14 @@
 package dio.challenge;
 
 import java.io.Console;
+import java.util.Scanner;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.Optional;
 import java.io.IOException;
+import java.io.PrintStream;
+import java.io.InputStream;
+
 import org.mindrot.jbcrypt.BCrypt;
 
 
@@ -111,15 +115,97 @@ class CheckingAccount implements Account {
     }
 }
 
+interface IoAdapter {
+    
+    public IoAdapter printf(String format, Object ... args);
+    public String readLine(String fmt, Object ... args);
+    public String readLine();
+    public String readPassword(String fmt, Object ... args);
+    public String readPassword();
+}
+
+class ConsoleWrapper implements IoAdapter {
+
+    Console console;
+    
+    public ConsoleWrapper(Console console) {
+	this.console = console;
+    }
+
+    @Override
+    public IoAdapter printf(String format, Object ... args) {
+	console.printf(format, args);
+	return this;
+    }
+    @Override
+    public String readLine(String fmt, Object ... args) {
+	return console.readLine(fmt, args);
+    }
+    @Override
+    public String readLine() {
+	return console.readLine();
+    }
+    @Override
+    public String readPassword(String fmt, Object ... args) {
+	char[] arr = console.readPassword(fmt, args);
+	if (arr == null)
+	    return null;
+	return String.valueOf(arr);
+    }
+    @Override
+    public String readPassword() {
+	char[] arr = console.readPassword();
+	if (arr == null)
+	    return null;
+	return String.valueOf(arr);
+    }
+}
+
+class StreamWrapper implements IoAdapter {
+    PrintStream out;
+    Scanner in;
+    
+    public StreamWrapper(PrintStream out, InputStream in) {
+	this.out = out;
+	this.in = new Scanner(in);
+    }
+
+    @Override
+    public IoAdapter printf(String format, Object ... args) {
+	out.printf(format, args);
+	return this;
+    }
+    @Override
+    public String readLine(String fmt, Object ... args) {
+	out.printf(fmt, args);
+	return this.readLine();
+    }
+    @Override
+    public String readLine() {
+	return in.hasNext() ? in.next() : null;
+    }
+    @Override
+    public String readPassword(String fmt, Object ... args) {
+	out.printf("Warning: this is not a fully functional terminal\n");
+	out.printf("Password will not be hidden while typing it\n");
+	out.printf(fmt, args);
+	return this.readPassword();
+    }
+    @Override
+    public String readPassword() {
+	return this.readLine();
+    }
+}
+
 class Presenter {
-    private final String wellcome = "Wellcome to ShellBank\n";
+    private final String wellcome = "\nWellcome to ShellBank\n";
     private final String startMenu = "Login (1), NewAccount (2), Exit (0)\n";
     private final String invalidChoice = "Invalid Choice\n";
     private final String promptName = "Please type your name\n";
 
-    private final Console console;
+    private final IoAdapter console;
 
-    public Presenter(Console console) {
+    public Presenter(IoAdapter console) {
         this.console = console;
     }
 
@@ -145,6 +231,8 @@ class Presenter {
         int option;
 
         inputLine = console.readLine();
+	if (inputLine == null)
+	    return 0;
         try {
             option = Integer.parseInt(inputLine);
             if (option < 0) {
@@ -155,11 +243,6 @@ class Presenter {
         }
 
         return option;
-    }
-    
-    private String readPass(String prompt) {
-        char pass[] = console.readPassword(prompt);
-        return pass == null ? null : String.valueOf(pass);
     }
 
     public void promptNewAccount(Repository repository) {
@@ -178,7 +261,7 @@ class Presenter {
         } else {
             tryAgain = null;
             while (true){
-                pass = this.readPass("Choose a 4 digit number password");
+                pass = console.readPassword("Choose a 4 digit number password: ");
                 if (pass == null || !pass.matches("\\d{4}")) {
                     console.printf("Invalid password\n");
                     tryAgain = console.readLine("Quit (0) TryAgain (Any)\n");
@@ -187,7 +270,7 @@ class Presenter {
                     else
                         continue;
                 }
-                confirm = this.readPass("Confirm password");
+                confirm = console.readPassword("Confirm password: ");
                 if (confirm == null || !confirm.equals(pass)) {
                     console.printf("Invalid confirmation\n");
                     tryAgain = console.readLine("Quit (0) TryAgain (Any)\n");
@@ -230,7 +313,7 @@ class Presenter {
 	    return ;
         }
 	account = maybeAccount.get();
-        pass = this.readPass("Enter 4 digit number password");
+        pass = console.readPassword("Enter 4 digit number password: ");
         if (!account.verifyPass(pass)) {
             console.printf("Invalid password\n");
 	    return ;
@@ -268,7 +351,16 @@ class Presenter {
 
 class Main {
     public static void main(String[] args) {
-        final Presenter presenter = new Presenter(System.console());
+	Console console = System.console();
+	final IoAdapter ioAdapter;
+
+	if (console != null)
+	    ioAdapter = new ConsoleWrapper(console);
+	else {
+	    ioAdapter = new StreamWrapper(System.out, System.in);
+	}
+	    
+	final Presenter presenter = new Presenter(ioAdapter);
         final Repository repository = new RepositoryInMemory(new HashMap<>());
 	
         presenter.mainMenu(repository);
