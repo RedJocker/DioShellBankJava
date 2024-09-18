@@ -44,7 +44,7 @@ test: $(OBJS) $(OBJS_TEST)
 	java -cp $(CP_TEST)  org.junit.runner.JUnitCore dio.challenge.TestMain
 
 etags:
-	etags $(SRC)
+	etags $(SRC) --include '~/java11_src/TAGS'
 
 clean:
 	rm -r $(BUILD_DIR)
