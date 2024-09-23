@@ -217,14 +217,31 @@ class StreamWrapper implements IoAdapter {
 }
 
 abstract class Menu {
-    protected final String invalidChoice = "Invalid Choice\n";
+    protected static final String invalidChoice = "Invalid Choice\n";
     protected final IoAdapter console;
 
     protected Menu(IoAdapter console) {
 	this.console = console;
     }
 
-    abstract void loop(Repository repository, Consumer<Integer> onChoice);
+    abstract String getMenuString();
+
+    abstract void loop(Repository repository);
+
+    protected int promptMenuChoice() {
+	int option;
+
+	while (true) {
+	    console.printf(this.getMenuString());
+	    option = console.readNumberUnsigned();
+	    if (option < 0 || option > 2) {
+		console.printf(this.invalidChoice);
+		continue ;
+	    } else {
+		return option;
+	    }
+	}
+    }
 }
 
 class MainMenu extends Menu {
@@ -233,8 +250,18 @@ class MainMenu extends Menu {
     private static final String startMenu = "Login (1), NewAccount (2), Exit (0)\n";
     private static final String bye = "Bye\n";
 
-    MainMenu(IoAdapter console) {
+    private final NewAccountIoForm newAccountForm;
+    private final LoginIoForm loginForm;
+    private final UserMenu userMenu;
+
+    MainMenu(IoAdapter console,
+	     NewAccountIoForm newAccountForm,
+	     LoginIoForm loginForm,
+	     UserMenu userMenu) {
 	super(console);
+	this.newAccountForm = newAccountForm;
+	this.loginForm = loginForm;
+	this.userMenu = userMenu;
     }
 
     public void displayWellcome() {
@@ -245,26 +272,85 @@ class MainMenu extends Menu {
 	console.printf(this.bye);
     }
 
-    private int promptStartMenu() {
-	int option;
+    public void userMenu(Account account, Repository repository) {
+	userMenu.loop(repository);
+    }
 
-	console.printf(this.startMenu);
-	option = console.readNumberUnsigned();
-	if (option < 0 || option > 2) {
-	    console.printf(this.invalidChoice);
-	    return promptStartMenu();
-	} else {
-	    return option;
-	}
+    private void promptNewAccount(Repository repository) {
+        boolean wasCreated = false;
+        Account account = null;
+
+	account = newAccountForm.collect();
+	if (account != null)
+	    wasCreated = repository.saveAccount(account);
+	else
+	    wasCreated = false;
+
+        if (!wasCreated && account == null) {
+            console.printf("Account creation failed\n");
+        }
+        else {
+            console.printf("Account created: %s\n", account);
+        }
+    }
+
+    private void login(Repository repository) {
+
+	final Optional<Account> maybeAccount =
+	    loginForm.collect();
+
+	if (!maybeAccount.isPresent()) {
+	    return ;
+        }
+	final Account account = maybeAccount.get();
+	this.userMenu(account, repository);
     }
 
     @Override
-    public void loop(Repository repository, Consumer<Integer> onChoice) {
+    public String getMenuString() {
+	return this.startMenu;
+    }
+
+    @Override
+    public void loop(Repository repository) {
 
 	int choice = -1;
 	while (choice != 0) {
-	    choice = this.promptStartMenu();
-	    onChoice.accept(choice);
+	    choice = this.promptMenuChoice();
+	    if (choice == 1) {
+		this.login(repository);
+	    } else if (choice == 2) {
+		this.promptNewAccount(repository);
+	    }
+	}
+    }
+}
+
+class UserMenu extends Menu {
+
+    private static final String startMenu = "Balance (1), Loan (2), Exit (0)\n";
+    
+    UserMenu(IoAdapter console) {
+	super(console);
+    }
+
+    @Override
+    public String getMenuString() {
+	return this.startMenu;
+    }
+
+    @Override
+    public void loop(Repository repository) {
+
+	int choice = -1;
+	while (choice != 0) {
+	    choice = this.promptMenuChoice();
+
+	    if (choice == 1) {
+		console.printf("choice 1\n"); 
+	    } else if (choice == 2) {
+		console.printf("choice 2\n"); 
+	    }
 	}
     }
 }
@@ -377,72 +463,17 @@ class Presenter {
 
     private final IoAdapter console;
     private final MainMenu mainMenu;
-    private final NewAccountIoForm newAccountForm;
-    private final LoginIoForm loginForm;
-
+    
     public Presenter(
 	    IoAdapter console,
-	    MainMenu mainMenu,
-	    NewAccountIoForm newAccountForm,
-	    LoginIoForm loginForm) {
+	    MainMenu mainMenu) {
         this.console = console;
 	this.mainMenu = mainMenu;
-	this.newAccountForm = newAccountForm;
-	this.loginForm = loginForm;
-    }
-
-    public void promptNewAccount(Repository repository) {
-        boolean wasCreated = false;
-        Account account = null;
-
-	account = newAccountForm.collect();
-	if (account != null)
-	    wasCreated = repository.saveAccount(account);
-	else
-	    wasCreated = false;
-
-        if (!wasCreated && account == null) {
-            console.printf("Account creation failed\n");
-        }
-        else {
-            console.printf("Account created: %s\n", account);
-        }
-    }
-
-    public void login(Repository repository) {
-
-	final Optional<Account> maybeAccount =
-	    loginForm.collect();
-
-	if (!maybeAccount.isPresent()) {
-	    return ;
-        }
-	final Account account = maybeAccount.get();
-	this.userMenu(account, repository);
-    }
-
-    private int promptUserMenu() {
-	return 0;
-    }
-
-    public void userMenu(Account account, Repository repository) {
-	console.printf("Welcome %s\n", account.getUserName());
-
-	int choice = -1;
-        while (choice != 0) {
-            choice = this.promptUserMenu();
-        }
     }
 
     public void mainMenu(Repository repository) {
 	mainMenu.displayWellcome();
-	mainMenu.loop(repository, choice -> {
-		if (choice == 1) {
-		    this.login(repository);
-		} else if (choice == 2) {
-		    this.promptNewAccount(repository);
-		}
-	    });
+	mainMenu.loop(repository);
 	mainMenu.displayBye();
     }
 }
@@ -453,13 +484,18 @@ class Main {
 	    IoAdapter ioAdapter, Repository repository) {
 
 	final NewAccountIoForm newAccountForm = new NewAccountIoForm(ioAdapter);
-	final MainMenu mainMenu = new MainMenu(ioAdapter);
 	final LoginIoForm loginForm = new LoginIoForm(ioAdapter, repository);
+	final UserMenu userMenu = new UserMenu(ioAdapter); 
+
+	final MainMenu mainMenu = new MainMenu(
+            ioAdapter,
+            newAccountForm,
+	    loginForm,
+	    userMenu
+	);
 	final Presenter presenter = new Presenter(
 	    ioAdapter,
-	    mainMenu,
-	    newAccountForm,
-	    loginForm
+	    mainMenu
 	);
 	return presenter;
     }
