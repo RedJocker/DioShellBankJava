@@ -34,17 +34,25 @@ jar: etags $(OBJS)
 	--main-class dio.challenge.Main -C build .
 
 $(OBJS) : $(BUILD_DIR)/%.class : $(SRC_DIR)/%.java
-	$(CC) -cp $(CP_OBJS) $< -d $(BUILD_DIR)
+	$(CC) -g -cp $(CP_OBJS) $< -d $(BUILD_DIR)
 
 $(OBJS_TEST) : $(BUILD_DIR)/%.class : $(SRC_DIR)/%.java
-	$(CC) -cp $(CP_TEST) $< -d $(BUILD_DIR)
+	$(CC) -g -cp $(CP_TEST) $< -d $(BUILD_DIR)
 
 test: $(OBJS) $(OBJS_TEST)
-#java -cp $(CP_TEST) org.junit.runner.JUnitCore dio.challenge.TestMain
 	java -cp $(CP_TEST)  org.junit.runner.JUnitCore dio.challenge.TestMain
 
 etags:
 	etags $(SRC) --include '~/java11_src/TAGS'
+
+debug_attach:
+	jdb -sourcepath ./src/main/ \
+	-connect com.sun.jdi.SocketAttach:hostname=localhost,port=9000
+
+debug_server:
+	java -cp $(CP_BUILD) -Xdebug \
+		-Xrunjdwp:transport=dt_socket,address=9000,server=y,suspend=y \
+		dio.challenge.Main
 
 clean:
 	rm -r $(BUILD_DIR)
