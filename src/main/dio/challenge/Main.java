@@ -71,7 +71,9 @@ class CheckingAccount implements Account {
     private final String username;
     private final double balance;
     private final String hashpass;
-
+    private final double loanLimit;
+    private final double loanCurrent;
+    
     public int getNumber() {
         return this.number;
     }
@@ -81,6 +83,7 @@ class CheckingAccount implements Account {
     public String getUserName() {
         return this.username;
     }
+
     public double getBalance() {
         return this.balance;
     }
@@ -94,25 +97,29 @@ class CheckingAccount implements Account {
         String branch,
         String username,
         double balance,
-        String plainPass) {
+        String plainPass,
+	double loanLimit,
+	double loanCurrent) {
 
         this.number = number;
         this.branch = branch;
         this.username = username;
         this.balance = balance;
         this.hashpass = BCrypt.hashpw(plainPass, BCrypt.gensalt());
+	this.loanLimit = loanLimit;
+	this.loanCurrent = loanCurrent;
     }
 
     public CheckingAccount(String username, String pass) {
-        this(Account.newNumber(), "4242-x", username, 0.0, pass);
+        this(Account.newNumber(), "4242-x", username, 0.0, pass, 500.0, 0.0);
     }
 
     @Override
     public String toString() {
         return String.format(
             "CheckingAccount(" +
-            "number: %d, branch: %s, username: %s, balance: %.2f)",
-            number, branch, username, balance);
+            "number: %d, branch: %s, username: %s, balance + loan: %.2f)",
+            number, branch, username, balance + loanCurrent);
     }
 }
 
@@ -138,7 +145,6 @@ interface IoAdapter {
         } catch (NumberFormatException ex) {
             option = -1;
         }
-
         return option;
     }
 }
@@ -387,7 +393,7 @@ class UserMenu extends Menu<Account> {
     public void loop(Repository repository, Account account) {
 
 	int choice = -1;
-	
+
 	this.logInSession(account);
 	this.greeting(account);
 	account = null;
@@ -512,7 +518,7 @@ class Presenter {
 
     private final IoAdapter console;
     private final MainMenu mainMenu;
-    
+
     public Presenter(
 	    IoAdapter console,
 	    MainMenu mainMenu) {

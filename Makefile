@@ -45,11 +45,11 @@ test: $(OBJS) $(OBJS_TEST)
 etags:
 	etags $(SRC) --include '~/java11_src/TAGS'
 
-debug_attach:
+debug-attach:
 	jdb -sourcepath ./src/main/ \
 	-connect com.sun.jdi.SocketAttach:hostname=localhost,port=9000
 
-debug_server:
+debug-server:
 	java -cp $(CP_BUILD) -Xdebug \
 		-Xrunjdwp:transport=dt_socket,address=9000,server=y,suspend=y \
 		dio.challenge.Main
