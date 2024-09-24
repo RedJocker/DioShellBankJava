@@ -9,7 +9,7 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.io.InputStream;
 import java.util.function.Consumer;
-
+import java.lang.IllegalStateException;
 import org.mindrot.jbcrypt.BCrypt;
 
 
@@ -216,7 +216,7 @@ class StreamWrapper implements IoAdapter {
     }
 }
 
-abstract class Menu {
+abstract class Menu<A> {
     protected static final String invalidChoice = "Invalid Choice\n";
     protected final IoAdapter console;
 
@@ -226,7 +226,9 @@ abstract class Menu {
 
     abstract String getMenuString();
 
-    abstract void loop(Repository repository);
+    abstract Integer getMenuSize();
+
+    abstract void loop(Repository repository, A args);
 
     protected int promptMenuChoice() {
 	int option;
@@ -234,7 +236,7 @@ abstract class Menu {
 	while (true) {
 	    console.printf(this.getMenuString());
 	    option = console.readNumberUnsigned();
-	    if (option < 0 || option > 2) {
+	    if (option < 0 || option > this.getMenuSize()) {
 		console.printf(this.invalidChoice);
 		continue ;
 	    } else {
@@ -244,7 +246,7 @@ abstract class Menu {
     }
 }
 
-class MainMenu extends Menu {
+class MainMenu extends Menu<Void> {
 
     private static final String wellcome = "\nWellcome to ShellBank\n";
     private static final String startMenu = "Login (1), NewAccount (2), Exit (0)\n";
@@ -273,14 +275,14 @@ class MainMenu extends Menu {
     }
 
     public void userMenu(Account account, Repository repository) {
-	userMenu.loop(repository);
+	userMenu.loop(repository, account);
     }
 
     private void promptNewAccount(Repository repository) {
         boolean wasCreated = false;
         Account account = null;
 
-	account = newAccountForm.collect();
+	account = newAccountForm.collect(null);
 	if (account != null)
 	    wasCreated = repository.saveAccount(account);
 	else
@@ -297,13 +299,18 @@ class MainMenu extends Menu {
     private void login(Repository repository) {
 
 	final Optional<Account> maybeAccount =
-	    loginForm.collect();
+	    loginForm.collect(null);
 
 	if (!maybeAccount.isPresent()) {
 	    return ;
         }
 	final Account account = maybeAccount.get();
 	this.userMenu(account, repository);
+    }
+    
+    @Override
+    public Integer getMenuSize() {
+	return 2;
     }
 
     @Override
@@ -312,7 +319,7 @@ class MainMenu extends Menu {
     }
 
     @Override
-    public void loop(Repository repository) {
+    public void loop(Repository repository, Void args) {
 
 	int choice = -1;
 	while (choice != 0) {
@@ -326,40 +333,82 @@ class MainMenu extends Menu {
     }
 }
 
-class UserMenu extends Menu {
+class UserMenu extends Menu<Account> {
 
-    private static final String startMenu = "Balance (1), Loan (2), Exit (0)\n";
+    private static final String startMenu = "Balance (1), Loan (2), Back (0)\n";
+    private Optional<Account> maybeUser = Optional.empty();
     
     UserMenu(IoAdapter console) {
 	super(console);
     }
 
+    public void startSessionFor(Account account) {
+	maybeUser = Optional.of(account);
+    }
+
+    private void logOffSession() {
+	maybeUser = Optional.empty();
+    }
+
+    private void logInSession(Account account) {
+	maybeUser = Optional.ofNullable(account);
+    }
+
+    private void updateSession(Account updated) {
+	if (!maybeUser.isPresent())
+	    return ;
+	final Account current = maybeUser.get();
+	if (current.number != updated.number) {
+	    throw new IllegalStateException(
+                "updateSession shold be called only whith updated copy of current Account");
+	} else
+	    this.maybeUser = Optional.of(updated);
+    }
+
+    private void greeting(Account account) {
+	console.printf("Welcome to ShellBank %s\n", account.getUserName());
+    }
+
+    private void balance(Account account) {
+	console.printf("balance: %.2f\n", account.getBalance());
+    }
+
+    @Override
+    public Integer getMenuSize() {
+	return 2;
+    }
+    
     @Override
     public String getMenuString() {
 	return this.startMenu;
     }
 
     @Override
-    public void loop(Repository repository) {
+    public void loop(Repository repository, Account account) {
 
 	int choice = -1;
-	while (choice != 0) {
+	
+	this.logInSession(account);
+	this.greeting(account);
+	account = null;
+	while (choice != 0 && maybeUser.isPresent()) {
+	    final Account current = maybeUser.get(); 
 	    choice = this.promptMenuChoice();
-
 	    if (choice == 1) {
-		console.printf("choice 1\n"); 
+		balance(current); 
 	    } else if (choice == 2) {
 		console.printf("choice 2\n"); 
 	    }
 	}
+	this.logOffSession();
     }
 }
 
-interface Form<R> {
-    R collect();
+interface Form<R, A> {
+    R collect(A args);
 }
 
-abstract class IoForm<R> implements Form<R>{
+abstract class IoForm<R, A> implements Form<R, A>{
     protected final IoAdapter console;
 
     protected IoForm(IoAdapter console) {
@@ -373,7 +422,7 @@ abstract class IoForm<R> implements Form<R>{
     }
 }
 
-class NewAccountIoForm extends IoForm<Account> {
+class NewAccountIoForm extends IoForm<Account, Void> {
     private static final String promptName = "Please type your name\n";
 
     public NewAccountIoForm(IoAdapter console) {
@@ -381,7 +430,7 @@ class NewAccountIoForm extends IoForm<Account> {
     }
 
     @Override
-    public Account collect() {
+    public Account collect(Void args) {
         Account account = null;
 
 	console.printf("New Account:\n");
@@ -419,7 +468,7 @@ class NewAccountIoForm extends IoForm<Account> {
     }
 }
 
-class LoginIoForm extends IoForm<Optional<Account>> {
+class LoginIoForm extends IoForm<Optional<Account>, Void> {
     final Repository repository;
 
     public LoginIoForm(IoAdapter console, Repository repository) {
@@ -428,7 +477,7 @@ class LoginIoForm extends IoForm<Optional<Account>> {
     }
 
     @Override
-    public Optional<Account> collect() {
+    public Optional<Account> collect(Void args) {
         int numberAccount;
         Optional<Account> maybeAccount;
 	Account account;
@@ -473,7 +522,7 @@ class Presenter {
 
     public void mainMenu(Repository repository) {
 	mainMenu.displayWellcome();
-	mainMenu.loop(repository);
+	mainMenu.loop(repository, null);
 	mainMenu.displayBye();
     }
 }

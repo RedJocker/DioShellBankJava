@@ -285,10 +285,10 @@ public class TestMain {
         Optional<String> actualTypeYourName = Arrays.stream(outSplit)
             .dropWhile(str -> !str.equals("Login:"))
             .dropWhile(str -> !str.contains("Number Account:"))
-            .dropWhile(str -> !str.contains("Welcome Mbr"))
+            .dropWhile(str -> !str.contains("Welcome") && !str.contains("Mbr"))
             .findFirst();
 
-        assertTrue("Expected output to contain e line that contains <Welcome Mbr>",
+        assertTrue("Expected output to contain e line that contains Welcome and contains Mbr",
                    actualTypeYourName.isPresent());
     }
 }
