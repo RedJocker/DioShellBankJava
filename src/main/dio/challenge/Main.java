@@ -133,7 +133,7 @@ class CheckingAccount implements Account {
 	if (!maybeLoanRequest.isPresent())
 	    return false;
 	double loanRequest = maybeLoanRequest.get();
-	return loanRequest <= this.loanLimit && loanRequest > 0.0;
+	return loanRequest <= this.loanLimit && loanRequest >= 1.0;
     }
 
     public CheckingAccount afterLoan(double loanAmount) {
@@ -394,31 +394,24 @@ class MainMenu extends Menu<Void> {
     }
 }
 
-class UserMenu extends Menu<Account> {
 
-    private static final String startMenu = "Balance (1), Loan (2), Back (0)\n";
-    private Optional<Account> maybeUser = Optional.empty();
+abstract class UserMenu<TypeAccount extends Account> extends Menu<TypeAccount> {
 
-    private final LoanIoForm loanForm;
+    protected Optional<TypeAccount> maybeUser = Optional.empty();
     
-    UserMenu(IoAdapter console, LoanIoForm loanForm) {
+    UserMenu(IoAdapter console) {
 	super(console);
-	this.loanForm = loanForm;
     }
 
-    public void startSessionFor(Account account) {
-	maybeUser = Optional.of(account);
-    }
-
-    private void logOffSession() {
+    protected void logOffSession() {
 	maybeUser = Optional.empty();
     }
 
-    private void logInSession(Account account) {
+    protected void logInSession(TypeAccount account) {
 	maybeUser = Optional.ofNullable(account);
     }
 
-    private void updateSession(Account updated) {
+    protected void updateSession(TypeAccount updated) {
 	if (!maybeUser.isPresent())
 	    return ;
 	final Account current = maybeUser.get();
@@ -428,7 +421,21 @@ class UserMenu extends Menu<Account> {
 	} else
 	    this.maybeUser = Optional.of(updated);
     }
+}
 
+
+
+class CheckingAccountMenu extends UserMenu<CheckingAccount> {
+
+    private static final String startMenu = "Balance (1), Loan (2), Back (0)\n";
+    private final LoanIoForm loanForm;
+    
+    CheckingAccountMenu(IoAdapter console, LoanIoForm loanForm) {
+	super(console);
+	this.loanForm = loanForm;
+    }
+
+    
     private void greeting(Account account) {
 	console.printf("Welcome to ShellBank %s\n", account.getUserName());
     }
@@ -437,12 +444,10 @@ class UserMenu extends Menu<Account> {
 	console.printf("balance: %.2f\n", account.getBalance());
     }
 
-    private void loan(Repository repository, Account account) {
-	if (! (account instanceof CheckingAccount))
-	    return ;
+    private void loan(Repository repository, CheckingAccount account) {
 	final CheckingAccount checkingAccount = (CheckingAccount) account;
 	account = null;
-	
+
 	double validatedLoanAmount = loanForm.collect(checkingAccount);
 	CheckingAccount updated = checkingAccount.afterLoan(validatedLoanAmount);
 	repository.update(updated);
@@ -460,7 +465,7 @@ class UserMenu extends Menu<Account> {
     }
 
     @Override
-    public void loop(Repository repository, Account account) {
+    public void loop(Repository repository, CheckingAccount account) {
 
 	int choice = -1;
 
@@ -468,7 +473,7 @@ class UserMenu extends Menu<Account> {
 	this.greeting(account);
 	account = null;
 	while (choice != 0 && maybeUser.isPresent()) {
-	    final Account current = maybeUser.get(); 
+	    final CheckingAccount current = maybeUser.get(); 
 	    choice = this.promptMenuChoice();
 	    if (choice == 1) {
 		balance(current); 
@@ -523,8 +528,8 @@ class LoanIoForm extends IoForm<Double, Account> {
 	    if (!checkingAccount.isValidLoanRequest(maybeLoanRequired)
 		|| !maybeLoanRequired.isPresent()) {
 
-		if (tryAgain()) {
-		    console.printf("Invalid loan requested\n");
+		console.printf("Invalid loan requested\n");
+		if (tryAgain()) {    
 		    continue ;
 		}
 		else
@@ -650,7 +655,7 @@ class Main {
 	final LoginIoForm loginForm = new LoginIoForm(ioAdapter, repository);
 
 	final LoanIoForm loanForm = new LoanIoForm(ioAdapter);
-	final UserMenu userMenu = new UserMenu(ioAdapter, loanForm); 
+	final CheckingAccountMenu userMenu = new CheckingAccountMenu(ioAdapter, loanForm); 
 	
 	final MainMenu mainMenu = new MainMenu(
             ioAdapter,
