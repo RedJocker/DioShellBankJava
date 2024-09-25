@@ -16,6 +16,7 @@ import org.mindrot.jbcrypt.BCrypt;
 interface Repository {
     public Optional<Account> getAccountByNumber(int accountNumber);
     public boolean saveAccount(Account account);
+    public boolean update(Account account);
 }
 
 class RepositoryInMemory implements Repository {
@@ -36,6 +37,14 @@ class RepositoryInMemory implements Repository {
         final Account oldAccount =
             database.putIfAbsent(account.getNumber(), account);
         return oldAccount == null;
+    }
+
+    @Override
+    public boolean update(Account account) {
+	if (!database.containsKey(account.getNumber()))
+	    return false;
+	database.put(account.getNumber(), account);
+	return true;
     }
 }
 
@@ -58,10 +67,12 @@ interface Account {
     public String getUserName();
     public double getBalance();
     public boolean verifyPass(String passAttempt);
-
+    
     public static int newNumber() {
         return number.newNumber();
     }
+
+    
 }
 
 class CheckingAccount implements Account {
@@ -92,6 +103,10 @@ class CheckingAccount implements Account {
 	return BCrypt.checkpw(passAttempt, hashpass);
     }
 
+    public double getLoanLimit() {
+	return this.loanLimit;
+    }
+
     private CheckingAccount(
         int number,
         String branch,
@@ -112,6 +127,25 @@ class CheckingAccount implements Account {
 
     public CheckingAccount(String username, String pass) {
         this(Account.newNumber(), "4242-x", username, 0.0, pass, 500.0, 0.0);
+    }
+
+    public boolean isValidLoanRequest(Optional<Double> maybeLoanRequest) {
+	if (!maybeLoanRequest.isPresent())
+	    return false;
+	double loanRequest = maybeLoanRequest.get();
+	return loanRequest <= this.loanLimit && loanRequest > 0.0;
+    }
+
+    public CheckingAccount afterLoan(double loanAmount) {
+	return new CheckingAccount(
+            this.number,
+            this.branch,
+            this.username,
+            this.balance + loanAmount,
+            this.hashpass,
+            this.loanLimit - loanAmount,
+            this.loanCurrent + loanAmount
+        );
     }
 
     @Override
@@ -146,6 +180,26 @@ interface IoAdapter {
             option = -1;
         }
         return option;
+    }
+
+    default Optional<Double> readDoublerUnsigned() {
+	String inputLine;
+        Optional<Double> maybeNumber;
+
+        inputLine = this.readLine();
+	if (inputLine == null)
+	    return Optional.empty();
+        try {
+	    double number = Double.parseDouble(inputLine);
+            if (number < 0) {
+                maybeNumber = Optional.empty();
+            } else {
+		maybeNumber = Optional.of(number);
+	    }
+        } catch (NumberFormatException ex) {
+            maybeNumber = Optional.empty();
+        }
+        return maybeNumber;
     }
 }
 
@@ -216,6 +270,7 @@ class StreamWrapper implements IoAdapter {
 	out.printf(fmt, args);
 	return this.readPassword();
     }
+    
     @Override
     public String readPassword() {
 	return this.readLine();
@@ -343,9 +398,12 @@ class UserMenu extends Menu<Account> {
 
     private static final String startMenu = "Balance (1), Loan (2), Back (0)\n";
     private Optional<Account> maybeUser = Optional.empty();
+
+    private final LoanIoForm loanForm;
     
-    UserMenu(IoAdapter console) {
+    UserMenu(IoAdapter console, LoanIoForm loanForm) {
 	super(console);
+	this.loanForm = loanForm;
     }
 
     public void startSessionFor(Account account) {
@@ -379,6 +437,18 @@ class UserMenu extends Menu<Account> {
 	console.printf("balance: %.2f\n", account.getBalance());
     }
 
+    private void loan(Repository repository, Account account) {
+	if (! (account instanceof CheckingAccount))
+	    return ;
+	final CheckingAccount checkingAccount = (CheckingAccount) account;
+	account = null;
+	
+	double validatedLoanAmount = loanForm.collect(checkingAccount);
+	CheckingAccount updated = checkingAccount.afterLoan(validatedLoanAmount);
+	repository.update(updated);
+	this.updateSession(updated);
+    }
+
     @Override
     public Integer getMenuSize() {
 	return 2;
@@ -403,7 +473,7 @@ class UserMenu extends Menu<Account> {
 	    if (choice == 1) {
 		balance(current); 
 	    } else if (choice == 2) {
-		console.printf("choice 2\n"); 
+		loan(repository, current);
 	    }
 	}
 	this.logOffSession();
@@ -425,6 +495,44 @@ abstract class IoForm<R, A> implements Form<R, A>{
 	final String tryAgainStr =
 	    console.readLine("Quit (0) TryAgain (Any)\n");
 	return tryAgainStr != null && !tryAgainStr.equals("0");
+    }
+}
+
+
+class LoanIoForm extends IoForm<Double, Account> {
+    private static final String promptName = "Please type your name\n";
+
+    public LoanIoForm(IoAdapter console) {
+	super(console);
+    }
+
+    @Override
+    public Double collect(Account account) {
+
+	if (!(account instanceof CheckingAccount))
+	    return 0.0;
+	final CheckingAccount checkingAccount = (CheckingAccount) account;
+	account = null;
+	
+	console.printf("Loan:\n");
+	while (true){
+	    console.printf(
+                "Max loan available: %.2f\n", checkingAccount.getLoanLimit());
+	    console.printf("Min loan: %.2f\n", 1.0); 
+	    final Optional<Double> maybeLoanRequired = console.readDoublerUnsigned();
+	    if (!checkingAccount.isValidLoanRequest(maybeLoanRequired)
+		|| !maybeLoanRequired.isPresent()) {
+
+		if (tryAgain()) {
+		    console.printf("Invalid loan requested\n");
+		    continue ;
+		}
+		else
+		    break ;
+	    }
+	    return maybeLoanRequired.get();
+	}
+	return 0.0;
     }
 }
 
@@ -540,8 +648,10 @@ class Main {
 
 	final NewAccountIoForm newAccountForm = new NewAccountIoForm(ioAdapter);
 	final LoginIoForm loginForm = new LoginIoForm(ioAdapter, repository);
-	final UserMenu userMenu = new UserMenu(ioAdapter); 
 
+	final LoanIoForm loanForm = new LoanIoForm(ioAdapter);
+	final UserMenu userMenu = new UserMenu(ioAdapter, loanForm); 
+	
 	final MainMenu mainMenu = new MainMenu(
             ioAdapter,
             newAccountForm,
