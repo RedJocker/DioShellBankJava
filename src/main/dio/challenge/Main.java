@@ -5,6 +5,7 @@ import java.util.Scanner;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.Optional;
+import java.util.ArrayList;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.io.InputStream;
@@ -394,7 +395,6 @@ class MainMenu extends Menu<Void> {
     }
 }
 
-
 abstract class UserMenu<TypeAccount extends Account> extends Menu<TypeAccount> {
 
     protected Optional<TypeAccount> maybeUser = Optional.empty();
@@ -423,7 +423,41 @@ abstract class UserMenu<TypeAccount extends Account> extends Menu<TypeAccount> {
     }
 }
 
+class AccountMenu extends UserMenu<Account> {
 
+    private final ArrayList<Object> menus;
+    
+    AccountMenu(IoAdapter console, CheckingAccountMenu checkingAccountMenu) {
+	super(console);
+	menus = new ArrayList<Object>();
+	menus.add(checkingAccountMenu);
+    }
+
+    private void checkingAccountMenu(
+        Repository repository, CheckingAccount account) {
+
+	CheckingAccountMenu menu = (CheckingAccountMenu) menus.get(0);
+	menu.loop(repository, account);
+    }
+    
+    @Override
+    public Integer getMenuSize() {
+	return -1; // loop delegated
+    }
+    
+    @Override
+    public String getMenuString() {
+	return ""; // loop delegated
+    }
+
+    @Override
+    public void loop(Repository repository, Account account) {
+
+	if (account instanceof CheckingAccount) {
+	    checkingAccountMenu(repository, (CheckingAccount) account);
+	}
+    }
+}
 
 class CheckingAccountMenu extends UserMenu<CheckingAccount> {
 
@@ -434,7 +468,6 @@ class CheckingAccountMenu extends UserMenu<CheckingAccount> {
 	super(console);
 	this.loanForm = loanForm;
     }
-
     
     private void greeting(Account account) {
 	console.printf("Welcome to ShellBank %s\n", account.getUserName());
