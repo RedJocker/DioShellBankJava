@@ -68,7 +68,7 @@ interface Account {
     public String getUserName();
     public double getBalance();
     public boolean verifyPass(String passAttempt);
-    
+
     public static int newNumber() {
         return number.newNumber();
     }
@@ -310,7 +310,7 @@ abstract class Menu<A> {
 
 class MainMenu extends Menu<Void> {
 
-    private static final String wellcome = "\nWellcome to ShellBank\n";
+    private static final String welcome = "\nWelcome to ShellBank\n";
     private static final String startMenu = "Login (1), NewAccount (2), Exit (0)\n";
     private static final String bye = "Bye\n";
 
@@ -328,8 +328,8 @@ class MainMenu extends Menu<Void> {
 	this.userMenu = userMenu;
     }
 
-    public void displayWellcome() {
-	console.printf(this.wellcome);
+    public void displayWelcome() {
+	console.printf(this.welcome);
     }
 
     public void displayBye() {
@@ -673,7 +673,7 @@ class Presenter {
     }
 
     public void mainMenu(Repository repository) {
-	mainMenu.displayWellcome();
+	mainMenu.displayWelcome();
 	mainMenu.loop(repository, null);
 	mainMenu.displayBye();
     }
