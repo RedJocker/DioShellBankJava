@@ -6,6 +6,8 @@ import java.util.Map;
 import java.util.HashMap;
 import java.util.Optional;
 import java.util.ArrayList;
+import java.time.ZoneId;
+import java.time.LocalDateTime;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.io.InputStream;
@@ -49,6 +51,35 @@ class RepositoryInMemory implements Repository {
     }
 }
 
+class Service {
+    private final Repository repository;
+
+    Service(Repository repository) {
+	this.repository = repository;
+    }
+
+    public boolean createAccount(Account account) {
+	if (account != null)
+	    return repository.saveAccount(account);
+	else
+	    return false;
+    }
+
+    public Optional<Account> getAccountByNumber(int accountNumber) {
+        return repository.getAccountByNumber(accountNumber);
+    }
+
+    public Optional<CheckingAccount> loan(double amount, CheckingAccount account) {
+	CheckingAccount updated = account.afterLoan(amount);
+	boolean wasUpdated = repository.update(updated);
+	if (wasUpdated) {
+	    return Optional.of(updated);
+	} else {
+	    return Optional.empty();
+	}
+    }
+}
+
 class NumberSequenceGenerator {
     int number;
 
@@ -68,11 +99,10 @@ interface Account {
     public String getUserName();
     public double getBalance();
     public boolean verifyPass(String passAttempt);
-
+    
     public static int newNumber() {
         return number.newNumber();
     }
-
     
 }
 
@@ -85,21 +115,24 @@ class CheckingAccount implements Account {
     private final String hashpass;
     private final double loanLimit;
     private final double loanCurrent;
-    
+
+    @Override
     public int getNumber() {
         return this.number;
     }
+    @Override
     public String getBranch() {
         return this.branch;
     }
+    @Override
     public String getUserName() {
         return this.username;
     }
-
+    @Override
     public double getBalance() {
         return this.balance;
     }
-
+    @Override
     public boolean verifyPass(String passAttempt) {
 	return BCrypt.checkpw(passAttempt, hashpass);
     }
@@ -290,7 +323,7 @@ abstract class Menu<A> {
 
     abstract Integer getMenuSize();
 
-    abstract void loop(Repository repository, A args);
+    abstract void loop(Service service, A args);
 
     protected int promptMenuChoice() {
 	int option;
@@ -336,21 +369,18 @@ class MainMenu extends Menu<Void> {
 	console.printf(this.bye);
     }
 
-    public void userMenu(Account account, Repository repository) {
-	userMenu.loop(repository, account);
+    public void userMenu(Account account, Service service) {
+	userMenu.loop(service, account);
     }
 
-    private void promptNewAccount(Repository repository) {
+    private void promptNewAccount(Service service) {
         boolean wasCreated = false;
         Account account = null;
 
 	account = newAccountForm.collect(null);
-	if (account != null)
-	    wasCreated = repository.saveAccount(account);
-	else
-	    wasCreated = false;
+	wasCreated = service.createAccount(account);
 
-        if (!wasCreated && account == null) {
+	if (!wasCreated) {
             console.printf("Account creation failed\n");
         }
         else {
@@ -358,16 +388,16 @@ class MainMenu extends Menu<Void> {
         }
     }
 
-    private void login(Repository repository) {
+    private void login(Service service) {
 
 	final Optional<Account> maybeAccount =
-	    loginForm.collect(null);
+	    loginForm.collect(service);
 
 	if (!maybeAccount.isPresent()) {
 	    return ;
         }
 	final Account account = maybeAccount.get();
-	this.userMenu(account, repository);
+	this.userMenu(account, service);
     }
     
     @Override
@@ -381,15 +411,15 @@ class MainMenu extends Menu<Void> {
     }
 
     @Override
-    public void loop(Repository repository, Void args) {
+    public void loop(Service service, Void args) {
 
 	int choice = -1;
 	while (choice != 0) {
 	    choice = this.promptMenuChoice();
 	    if (choice == 1) {
-		this.login(repository);
+		this.login(service);
 	    } else if (choice == 2) {
-		this.promptNewAccount(repository);
+		this.promptNewAccount(service);
 	    }
 	}
     }
@@ -434,10 +464,10 @@ class AccountMenu extends UserMenu<Account> {
     }
 
     private void checkingAccountMenu(
-        Repository repository, CheckingAccount account) {
+        Service service, CheckingAccount account) {
 
 	CheckingAccountMenu menu = (CheckingAccountMenu) menus.get(0);
-	menu.loop(repository, account);
+	menu.loop(service, account);
     }
     
     @Override
@@ -451,10 +481,10 @@ class AccountMenu extends UserMenu<Account> {
     }
 
     @Override
-    public void loop(Repository repository, Account account) {
+    public void loop(Service service, Account account) {
 
 	if (account instanceof CheckingAccount) {
-	    checkingAccountMenu(repository, (CheckingAccount) account);
+	    checkingAccountMenu(service, (CheckingAccount) account);
 	}
     }
 }
@@ -477,14 +507,20 @@ class CheckingAccountMenu extends UserMenu<CheckingAccount> {
 	console.printf("balance: %.2f\n", account.getBalance());
     }
 
-    private void loan(Repository repository, CheckingAccount account) {
+    private void loan(Service service, CheckingAccount account) {
 	final CheckingAccount checkingAccount = (CheckingAccount) account;
 	account = null;
 
 	double validatedLoanAmount = loanForm.collect(checkingAccount);
-	CheckingAccount updated = checkingAccount.afterLoan(validatedLoanAmount);
-	repository.update(updated);
-	this.updateSession(updated);
+	final Optional<CheckingAccount> maybeUpdated =
+	    service.loan(validatedLoanAmount, account);
+
+	if (!maybeUpdated.isPresent()) {
+	    console.printf("Server Error: Loan was not created\n");
+	} else {
+	    console.printf("Loan amount is now available\n");
+	    this.updateSession(maybeUpdated.get());
+	}
     }
 
     @Override
@@ -498,7 +534,7 @@ class CheckingAccountMenu extends UserMenu<CheckingAccount> {
     }
 
     @Override
-    public void loop(Repository repository, CheckingAccount account) {
+    public void loop(Service service, CheckingAccount account) {
 
 	int choice = -1;
 
@@ -511,7 +547,7 @@ class CheckingAccountMenu extends UserMenu<CheckingAccount> {
 	    if (choice == 1) {
 		balance(current); 
 	    } else if (choice == 2) {
-		loan(repository, current);
+		loan(service, current);
 	    }
 	}
 	this.logOffSession();
@@ -620,16 +656,14 @@ class NewAccountIoForm extends IoForm<Account, Void> {
     }
 }
 
-class LoginIoForm extends IoForm<Optional<Account>, Void> {
-    final Repository repository;
+class LoginIoForm extends IoForm<Optional<Account>, Service> {
 
-    public LoginIoForm(IoAdapter console, Repository repository) {
+    public LoginIoForm(IoAdapter console) {
 	super(console);
-	this.repository = repository;
     }
 
     @Override
-    public Optional<Account> collect(Void args) {
+    public Optional<Account> collect(Service service) {
         int numberAccount;
         Optional<Account> maybeAccount;
 	Account account;
@@ -644,7 +678,7 @@ class LoginIoForm extends IoForm<Optional<Account>, Void> {
 	    return Optional.empty();
         }
 
-	maybeAccount = repository.getAccountByNumber(numberAccount);
+	maybeAccount = service.getAccountByNumber(numberAccount);
 	if (!maybeAccount.isPresent()) {
             console.printf("Account not found\n");
 	    return Optional.empty();
@@ -672,20 +706,19 @@ class Presenter {
 	this.mainMenu = mainMenu;
     }
 
-    public void mainMenu(Repository repository) {
+    public void mainMenu(Service service) {
 	mainMenu.displayWelcome();
-	mainMenu.loop(repository, null);
+	mainMenu.loop(service, null);
 	mainMenu.displayBye();
     }
 }
 
 class Main {
 
-    static public Presenter defaultPresenter(
-	    IoAdapter ioAdapter, Repository repository) {
+    static public Presenter defaultPresenter(IoAdapter ioAdapter) {
 
 	final NewAccountIoForm newAccountForm = new NewAccountIoForm(ioAdapter);
-	final LoginIoForm loginForm = new LoginIoForm(ioAdapter, repository);
+	final LoginIoForm loginForm = new LoginIoForm(ioAdapter);
 
 	final LoanIoForm loanForm = new LoanIoForm(ioAdapter);
 	final CheckingAccountMenu userMenu = new CheckingAccountMenu(ioAdapter, loanForm); 
@@ -714,8 +747,9 @@ class Main {
 	}
 
 	final Repository repository = new RepositoryInMemory(new HashMap<>());
-	final Presenter presenter = defaultPresenter(ioAdapter, repository);
+	final Service service = new Service(repository);
+	final Presenter presenter = defaultPresenter(ioAdapter);
 
-        presenter.mainMenu(repository);
+        presenter.mainMenu(service);
     }
 }

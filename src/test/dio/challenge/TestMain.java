@@ -35,8 +35,8 @@ public class TestMain {
     public void testEofAfterOpen() throws Exception{
 
         final Repository repository = new RepositoryInMemory(new HashMap<>());
-        final Presenter presenter =
-            Main.defaultPresenter(ioAdapter, repository);
+	final Service service = new Service(repository);
+	final Presenter presenter = Main.defaultPresenter(ioAdapter);
 
         Thread feedIn = new Thread(() -> {
                 writeToIn.close();
@@ -45,9 +45,9 @@ public class TestMain {
         feedIn.start();
         feedIn.join();
 
-        presenter.mainMenu(repository);
+        presenter.mainMenu(service);
 
-        assertEquals("", "\nWellcome to ShellBank\n" +
+        assertEquals("", "\nWelcome to ShellBank\n" +
 "Login (1), NewAccount (2), Exit (0)\n" +
 "Bye\n", outContent.toString());
     }
@@ -56,8 +56,8 @@ public class TestMain {
     public void test0AfterOpen() throws Exception {
 
         final Repository repository = new RepositoryInMemory(new HashMap<>());
-        final Presenter presenter =
-            Main.defaultPresenter(ioAdapter, repository);
+        final Service service = new Service(repository);
+	final Presenter presenter = Main.defaultPresenter(ioAdapter);
 
         Thread feedIn = new Thread(() -> {
                 writeToIn.println("0");
@@ -67,9 +67,9 @@ public class TestMain {
 
         feedIn.start();
         feedIn.join();
-        presenter.mainMenu(repository);
+        presenter.mainMenu(service);
 
-        assertEquals("", "\nWellcome to ShellBank\n" +
+        assertEquals("", "\nWelcome to ShellBank\n" +
 "Login (1), NewAccount (2), Exit (0)\n" +
 "Bye\n", outContent.toString());
     }
@@ -78,9 +78,9 @@ public class TestMain {
     public void test2AfterOpen() throws Exception {
 
         final Repository repository = new RepositoryInMemory(new HashMap<>());
-        final Presenter presenter =
-            Main.defaultPresenter(ioAdapter, repository);
-
+	final Service service = new Service(repository);
+	final Presenter presenter = Main.defaultPresenter(ioAdapter);
+	
         Thread feedIn = new Thread(() -> {
                 writeToIn.println("2");
                 writeToIn.flush();
@@ -89,7 +89,7 @@ public class TestMain {
 
         feedIn.start();
         feedIn.join();
-        presenter.mainMenu(repository);
+        presenter.mainMenu(service);
 
         String output = outContent.toString();
         String[] outSplit = output.split("\n");
@@ -104,9 +104,9 @@ public class TestMain {
     public void testNewAccountJustName() throws Exception {
 
         final Repository repository = new RepositoryInMemory(new HashMap<>());
-        final Presenter presenter =
-            Main.defaultPresenter(ioAdapter, repository);
-
+        final Service service = new Service(repository);
+	final Presenter presenter = Main.defaultPresenter(ioAdapter);
+	
         Thread feedIn = new Thread(() -> {
                 writeToIn.println("2");
                 writeToIn.println("Mbr");
@@ -116,7 +116,7 @@ public class TestMain {
 
         feedIn.start();
         feedIn.join();
-        presenter.mainMenu(repository);
+        presenter.mainMenu(service);
         String output = outContent.toString();
         String[] outSplit = output.split("\n");
 
@@ -142,8 +142,8 @@ public class TestMain {
     public void testNewAccountNonNumericPassword() throws Exception {
 
         final Repository repository = new RepositoryInMemory(new HashMap<>());
-        final Presenter presenter =
-            Main.defaultPresenter(ioAdapter, repository);
+        final Service service = new Service(repository);
+	final Presenter presenter = Main.defaultPresenter(ioAdapter);
 
         Thread feedIn = new Thread(() -> {
                 writeToIn.println("2");
@@ -155,7 +155,7 @@ public class TestMain {
 
         feedIn.start();
         feedIn.join();
-        presenter.mainMenu(repository);
+        presenter.mainMenu(service);
         String output = outContent.toString();
         String[] outSplit = output.split("\n");
 
@@ -181,9 +181,9 @@ public class TestMain {
     public void testNewAccountIncorrectConfirmation() throws Exception {
 
         final Repository repository = new RepositoryInMemory(new HashMap<>());
-        final Presenter presenter =
-            Main.defaultPresenter(ioAdapter, repository);
-
+        final Service service = new Service(repository);
+	final Presenter presenter = Main.defaultPresenter(ioAdapter);
+	
         Thread feedIn = new Thread(() -> {
                 writeToIn.println("2");
                 writeToIn.println("Mbr");
@@ -195,7 +195,7 @@ public class TestMain {
 
         feedIn.start();
         feedIn.join();
-        presenter.mainMenu(repository);
+        presenter.mainMenu(service);
         String output = outContent.toString();
         String[] outSplit = output.split("\n");
 
@@ -222,8 +222,8 @@ public class TestMain {
     public void testNewAccountCorrectConfirmation() throws Exception {
 
         final Repository repository = new RepositoryInMemory(new HashMap<>());
-        final Presenter presenter =
-            Main.defaultPresenter(ioAdapter, repository);
+        final Service service = new Service(repository);
+	final Presenter presenter = Main.defaultPresenter(ioAdapter);
 
         Thread feedIn = new Thread(() -> {
                 writeToIn.println("2");
@@ -236,7 +236,7 @@ public class TestMain {
 
         feedIn.start();
         feedIn.join();
-        presenter.mainMenu(repository);
+        presenter.mainMenu(service);
         String output = outContent.toString();
         String[] outSplit = output.split("\n");
 
@@ -265,8 +265,8 @@ public class TestMain {
         final HashMap<Integer, Account> repoBack = new HashMap<>();
         repoBack.put(1, new CheckingAccount("Mbr", "1234"));
         final Repository repository = new RepositoryInMemory(repoBack);
-        final Presenter presenter =
-            Main.defaultPresenter(ioAdapter, repository);
+        final Service service = new Service(repository);
+	final Presenter presenter = Main.defaultPresenter(ioAdapter);
 
         Thread feedIn = new Thread(() -> {
                 writeToIn.println("1");
@@ -278,7 +278,7 @@ public class TestMain {
 
         feedIn.start();
         feedIn.join();
-        presenter.mainMenu(repository);
+        presenter.mainMenu(service);
         String output = outContent.toString();
         String[] outSplit = output.split("\n");
 
