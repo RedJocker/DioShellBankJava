@@ -109,7 +109,8 @@ public class TestMain {
 	
         Thread feedIn = new Thread(() -> {
                 writeToIn.println("2");
-                writeToIn.println("Mbr");
+		writeToIn.println("1");
+		writeToIn.println("Mbr");
                 writeToIn.flush();
                 writeToIn.close();
         });
@@ -147,7 +148,8 @@ public class TestMain {
 
         Thread feedIn = new Thread(() -> {
                 writeToIn.println("2");
-                writeToIn.println("Mbr");
+		writeToIn.println("1");
+		writeToIn.println("Mbr");
                 writeToIn.println("ABC");
                 writeToIn.flush();
                 writeToIn.close();
@@ -186,7 +188,8 @@ public class TestMain {
 	
         Thread feedIn = new Thread(() -> {
                 writeToIn.println("2");
-                writeToIn.println("Mbr");
+		writeToIn.println("1");
+		writeToIn.println("Mbr");
                 writeToIn.println("1234");
                 writeToIn.println("4321");
                 writeToIn.flush();
@@ -227,7 +230,8 @@ public class TestMain {
 
         Thread feedIn = new Thread(() -> {
                 writeToIn.println("2");
-                writeToIn.println("Mbr");
+		writeToIn.println("1");
+		writeToIn.println("Mbr");
                 writeToIn.println("1234");
                 writeToIn.println("1234");
                 writeToIn.flush();

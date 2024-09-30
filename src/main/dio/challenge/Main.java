@@ -99,7 +99,9 @@ class Service {
         return repository.getAccountByNumber(accountNumber);
     }
 
-    public Optional<CheckingAccount> loan(double amount, CheckingAccount account) {
+    public Optional<CheckingAccount> loan(
+					  double amount,
+					  CheckingAccount account) {
 	CheckingAccount updated = account.loan(amount);
 	boolean wasUpdated = repository.update(updated);
 	if (wasUpdated) {
@@ -205,14 +207,14 @@ class CheckingAccount implements Account {
     @Override
     public Account copyWithAmount(double amount) {
 	return new CheckingAccount(
-            this.number,
-            this.branch,
-            this.username,
-            amount,
-            this.hashpass,
-            this.loanLimit,
-            this.loanCurrent
-        );
+				   this.number,
+				   this.branch,
+				   this.username,
+				   amount,
+				   this.hashpass,
+				   this.loanLimit,
+				   this.loanCurrent
+				   );
     }
 
     @Override
@@ -247,7 +249,7 @@ class CheckingAccount implements Account {
 			    String branch,
 			    String username,
 			    double balance,
-			    String plainPass,
+			    String hashPass,
 			    double loanLimit,
 			    double loanCurrent) {
 
@@ -255,13 +257,14 @@ class CheckingAccount implements Account {
         this.branch = branch;
         this.username = username;
         this.balance = balance;
-        this.hashpass = BCrypt.hashpw(plainPass, BCrypt.gensalt());
+        this.hashpass = hashPass;
 	this.loanLimit = loanLimit;
 	this.loanCurrent = loanCurrent;
     }
 
     public CheckingAccount(String username, String pass) {
-        this(Account.newNumber(), "4242-x", username, 0.0, pass, 500.0, 0.0);
+        this(Account.newNumber(), "4242-x", username, 0.0,
+	     BCrypt.hashpw(pass, BCrypt.gensalt()), 500.0, 0.0);
     }
 
     public boolean isValidLoanRequest(Optional<Double> maybeLoanRequest) {
@@ -287,7 +290,99 @@ class CheckingAccount implements Account {
     public String toString() {
         return String.format(
 			     "CheckingAccount(" +
-			     "number: %d, branch: %s, username: %s, balance: %.2f)",
+			     "number: %d, branch: %s, " +
+			     "username: %s, balance: %.2f)",
+			     number, branch, username, balance);
+    }
+}
+
+class SavingAccount implements Account {
+
+    private final int number;
+    private final String branch;
+    private final String username;
+    private final double balance;
+    private final String hashpass;
+
+    @Override
+    public int getNumber() {
+        return this.number;
+    }
+    @Override
+    public String getBranch() {
+        return this.branch;
+    }
+    @Override
+    public String getUserName() {
+        return this.username;
+    }
+    @Override
+    public double getBalance() {
+        return this.balance;
+    }
+    @Override
+    public boolean verifyPass(String passAttempt) {
+	return BCrypt.checkpw(passAttempt, hashpass);
+    }
+
+    @Override
+    public Account copyWithAmount(double amount) {
+	return new SavingAccount(
+				 this.number,
+				 this.branch,
+				 this.username,
+				 amount,
+				 this.hashpass
+				 );
+    }
+
+    @Override
+    public Account deposit(double amount) {
+	return this.copyWithAmount(this.balance + amount);
+    }
+
+    @Override
+    public boolean isValidWithdraw(double amount) {
+	return this.balance >= amount;
+    }
+
+    @Override
+    public Account withdraw(double amount) {
+	return this.copyWithAmount(this.balance - amount);
+    }
+
+    @Override
+    public Pair<Account, Account> transfer(double amount, Account to) {
+	Account updatedFrom = this.copyWithAmount(this.balance - amount);
+	
+	Account updatedTo = to.copyWithAmount(to.getBalance() + amount);
+	return new Pair(updatedFrom, updatedTo);
+    }
+
+    private SavingAccount(
+			  int number,
+			  String branch,
+			  String username,
+			  double balance,
+			  String hashPass) {
+        this.number = number;
+        this.branch = branch;
+        this.username = username;
+        this.balance = balance;
+        this.hashpass = hashPass;
+    }
+
+    public SavingAccount(String username, String pass) {
+        this(Account.newNumber(), "4242-x", username, 0.0,
+	     BCrypt.hashpw(pass, BCrypt.gensalt()));
+    }
+
+    @Override
+    public String toString() {
+        return String.format(
+			     "SavingAccount(" +
+			     "number: %d, branch: %s, " +
+			     "username: %s, balance: %.2f)",
 			     number, branch, username, balance);
     }
 }
@@ -445,7 +540,8 @@ abstract class Menu<A> {
 class MainMenu extends Menu<Void> {
 
     private static final String welcome = "\nWelcome to ShellBank\n";
-    private static final String startMenu = "Login (1), NewAccount (2), Exit (0)\n";
+    private static final String startMenu =
+	"Login (1), NewAccount (2), Exit (0)\n";
     private static final String bye = "Bye\n";
 
     private final NewAccountIoForm newAccountForm;
@@ -534,6 +630,10 @@ abstract class UserMenu<TypeAccount extends Account> extends Menu<TypeAccount> {
 	super(console);
     }
 
+    protected void greeting(Account account) {
+	console.printf("Welcome to ShellBank %s\n", account.getUserName());
+    }
+    
     protected void logOffSession() {
 	maybeUser = Optional.empty();
     }
@@ -548,7 +648,9 @@ abstract class UserMenu<TypeAccount extends Account> extends Menu<TypeAccount> {
 	final Account current = maybeUser.get();
 	if (current.number != updated.number) {
 	    throw new IllegalStateException(
-					    "updateSession shold be called only whith updated copy of current Account");
+					    "updateSession shold be called " +
+					    "only whith updated copy of " +
+					    "current Account");
 	} else
 	    this.maybeUser = Optional.of(updated);
     }
@@ -558,16 +660,22 @@ class AccountMenu extends UserMenu<Account> {
 
     private final ArrayList<Object> menus;
     
-    AccountMenu(IoAdapter console, CheckingAccountMenu checkingAccountMenu) {
+    AccountMenu(IoAdapter console, CheckingAccountMenu checkingAccountMenu, SavingAccountMenu savingAccountMenu) {
 	super(console);
 	menus = new ArrayList<Object>();
 	menus.add(checkingAccountMenu);
+	menus.add(savingAccountMenu);
     }
 
-    private void checkingAccountMenu(
-				     Service service, CheckingAccount account) {
+    private void checkingAccountMenu(Service service, CheckingAccount account) {
 
 	CheckingAccountMenu menu = (CheckingAccountMenu) menus.get(0);
+	menu.loop(service, account);
+    }
+
+    private void savingAccountMenu(Service service, SavingAccount account) {
+
+	SavingAccountMenu menu = (SavingAccountMenu) menus.get(1);
 	menu.loop(service, account);
     }
     
@@ -586,13 +694,16 @@ class AccountMenu extends UserMenu<Account> {
 
 	if (account instanceof CheckingAccount) {
 	    checkingAccountMenu(service, (CheckingAccount) account);
+	} else if (account instanceof SavingAccount) {
+	    savingAccountMenu(service, (SavingAccount) account);
 	}
     }
 }
 
 class CheckingAccountMenu extends UserMenu<CheckingAccount> {
 
-    private static final String startMenu = "Balance (1), Loan (2), Deposit (3), Withdraw (4), Back (0)\n";
+    private static final String startMenu =
+	"Balance (1), Loan (2), Deposit (3), Withdraw (4), Back (0)\n";
     private final LoanIoForm loanForm;
     private final DepositIoForm depositForm;
     private final WithdrawIoForm withdrawForm;
@@ -609,10 +720,6 @@ class CheckingAccountMenu extends UserMenu<CheckingAccount> {
 	this.withdrawForm = withdrawForm;
     }
     
-    private void greeting(Account account) {
-	console.printf("Welcome to ShellBank %s\n", account.getUserName());
-    }
-
     private void balance(Account account) {
 	console.printf("balance: %.2f\n", account.getBalance());
     }
@@ -636,7 +743,8 @@ class CheckingAccountMenu extends UserMenu<CheckingAccount> {
 	final Optional<Account> maybeUpdated =
 	    service.deposit(validatedLoanAmount, account);
 
-	if (!maybeUpdated.isPresent() || !(maybeUpdated.get() instanceof CheckingAccount)) {
+	if (!maybeUpdated.isPresent()
+	    || !(maybeUpdated.get() instanceof CheckingAccount)) {
 	    console.printf("Server Error: Deposit was not registered\n");
 	} else {
 	    console.printf("Deposit amount is now available\n");
@@ -651,7 +759,8 @@ class CheckingAccountMenu extends UserMenu<CheckingAccount> {
 	final Optional<Account> maybeUpdated =
 	    service.withdraw(validatedLoanAmount, account);
 
-	if (!maybeUpdated.isPresent() || !(maybeUpdated.get() instanceof CheckingAccount)) {
+	if (!maybeUpdated.isPresent()
+	    || !(maybeUpdated.get() instanceof CheckingAccount)) {
 	    console.printf("Server Error: Withdraw was not registered\n");
 	} else {
 	    console.printf("Withdraw amount is now available\n");
@@ -694,6 +803,91 @@ class CheckingAccountMenu extends UserMenu<CheckingAccount> {
     }
 }
 
+class SavingAccountMenu extends UserMenu<SavingAccount> {
+
+    private static final String startMenu =
+	"Balance (1), Deposit (2), Withdraw (3), Back (0)\n";
+    private final DepositIoForm depositForm;
+    private final WithdrawIoForm withdrawForm;
+    
+    SavingAccountMenu(
+		      IoAdapter console,
+		      DepositIoForm depositForm,
+		      WithdrawIoForm withdrawForm) {
+
+	super(console);
+	this.depositForm = depositForm;
+	this.withdrawForm = withdrawForm;
+    }
+
+    private void balance(Account account) {
+	console.printf("balance: %.2f\n", account.getBalance());
+    }
+
+    private void deposit(Service service, SavingAccount account) {
+	
+	double validatedLoanAmount = depositForm.collect(account);
+	final Optional<Account> maybeUpdated =
+	    service.deposit(validatedLoanAmount, account);
+
+	if (!maybeUpdated.isPresent()
+	    || !(maybeUpdated.get() instanceof SavingAccount)) {
+	    console.printf("Server Error: Deposit was not registered\n");
+	} else {
+	    console.printf("Deposit amount is now available\n");
+	    this.updateSession((SavingAccount) maybeUpdated.get());
+	}
+    }
+    
+    private void withdraw(Service service, SavingAccount account) {
+	
+	double validatedLoanAmount = withdrawForm.collect(account);
+	final Optional<Account> maybeUpdated =
+	    service.withdraw(validatedLoanAmount, account);
+
+	if (!maybeUpdated.isPresent()
+	    || !(maybeUpdated.get() instanceof SavingAccount)) {
+	    console.printf("Server Error: Withdraw was not registered\n");
+	} else {
+	    console.printf("Withdraw amount is now available\n");
+	    this.updateSession((SavingAccount) maybeUpdated.get());
+	}
+    }
+
+    @Override
+    public Integer getMenuSize() {
+	return 3;
+    }
+    
+    @Override
+    public String getMenuString() {
+	return this.startMenu;
+    }
+
+    @Override
+    public void loop(Service service, SavingAccount account) {
+
+	int choice = -1;
+
+	this.logInSession(account);
+	this.greeting(account);
+	account = null;
+	while (choice != 0 && maybeUser.isPresent()) {
+	    final SavingAccount current = maybeUser.get(); 
+	    choice = this.promptMenuChoice();
+	    if (choice == 1) {
+		balance(current); 
+	    } else if (choice == 2) {
+		deposit(service, current);
+	    } else if (choice == 3) {
+		withdraw(service, current);
+	    }
+	}
+	this.logOffSession();
+    }
+}
+
+
 interface Form<R, A> {
     R collect(A args);
 }
@@ -725,7 +919,9 @@ class DepositIoForm extends IoForm<Double, Account> {
 	console.printf("Deposit:\n");
 	while (true){
 	    console.printf("How much have you deposited:\n");
-	    final Optional<Double> maybeDepositAmount = console.readDoublerUnsigned();
+	    final Optional<Double> maybeDepositAmount =
+		console.readDoublerUnsigned();
+
 	    if (!maybeDepositAmount.isPresent()) {
 		console.printf("Invalid deposit\n");
 		if (tryAgain()) {
@@ -754,7 +950,9 @@ class WithdrawIoForm extends IoForm<Double, Account> {
 	    
 	    console.printf("How much would you like to withdraw:\n");
 	    console.printf("Balance: %.2f\n", account.getBalance());
-	    final Optional<Double> maybeWithdrawAmount = console.readDoublerUnsigned();
+	    final Optional<Double> maybeWithdrawAmount =
+		console.readDoublerUnsigned();
+
 	    if (!maybeWithdrawAmount.isPresent()
 		|| !account.isValidWithdraw(maybeWithdrawAmount.get())) {
 		console.printf("Invalid withdraw\n");
@@ -788,9 +986,13 @@ class LoanIoForm extends IoForm<Double, Account> {
 	console.printf("Loan:\n");
 	while (true){
 	    console.printf(
-                "Max loan available: %.2f\n", checkingAccount.getLoanLimit());
+			   "Max loan available: %.2f\n",
+			   checkingAccount.getLoanLimit());
 	    console.printf("Min loan: %.2f\n", 1.0); 
-	    final Optional<Double> maybeLoanRequired = console.readDoublerUnsigned();
+
+	    final Optional<Double> maybeLoanRequired =
+		console.readDoublerUnsigned();
+
 	    if (!checkingAccount.isValidLoanRequest(maybeLoanRequired)
 		|| !maybeLoanRequired.isPresent()) {
 
@@ -820,6 +1022,16 @@ class NewAccountIoForm extends IoForm<Account, Void> {
 
 	console.printf("New Account:\n");
 	while (true){
+	    console.printf("Choose account type: Checking (1), Saving (2)\n");
+	    final int type = console.readNumberUnsigned();
+	    if (type < 1 || type > 2) {
+		console.printf("Invalid account type\n");
+		if (tryAgain())
+		    continue;
+		else
+		    break;
+	    }
+
 	    final String name = console.readLine(this.promptName);
 	    if (name == null || name.isBlank()) {
 		console.printf("Invalid name\n");
@@ -846,7 +1058,13 @@ class NewAccountIoForm extends IoForm<Account, Void> {
 		else
 		    break;
 	    }
-	    account = new CheckingAccount(name, pass);
+	    if (type == 1)
+		account = new CheckingAccount(name, pass);
+	    else if (type == 2)
+		account = new SavingAccount(name, pass);
+	    else
+		throw new IllegalStateException("Invalid account type " +
+						"while creating new account");
 	    break ;
 	}
 	return account;
@@ -897,8 +1115,8 @@ class Presenter {
     private final MainMenu mainMenu;
 
     public Presenter(
-	    IoAdapter console,
-	    MainMenu mainMenu) {
+		     IoAdapter console,
+		     MainMenu mainMenu) {
         this.console = console;
 	this.mainMenu = mainMenu;
     }
@@ -920,22 +1138,32 @@ class Main {
 	final LoanIoForm loanForm = new LoanIoForm(ioAdapter);
 	final DepositIoForm depositForm = new DepositIoForm(ioAdapter);
 	final WithdrawIoForm withdrawForm = new WithdrawIoForm(ioAdapter);
-	final CheckingAccountMenu userMenu = new CheckingAccountMenu(
-						   ioAdapter,
-						   loanForm,
-						   depositForm,
-						   withdrawForm);
 	
+	final CheckingAccountMenu chekingAccountMenu =
+	    new CheckingAccountMenu(
+				    ioAdapter,
+				    loanForm,
+				    depositForm,
+				    withdrawForm);
+
+	final SavingAccountMenu savingAccountMenu =
+	    new SavingAccountMenu(
+				  ioAdapter,
+				  depositForm,
+				  withdrawForm);
+
+	final AccountMenu accountMenu =
+	    new AccountMenu(ioAdapter, chekingAccountMenu, savingAccountMenu);
 	final MainMenu mainMenu = new MainMenu(
-            ioAdapter,
-            newAccountForm,
-	    loginForm,
-	    userMenu
-	);
+					       ioAdapter,
+					       newAccountForm,
+					       loginForm,
+					       accountMenu
+					       );
 	final Presenter presenter = new Presenter(
-	    ioAdapter,
-	    mainMenu
-	);
+						  ioAdapter,
+						  mainMenu
+						  );
 	return presenter;
     }
 
