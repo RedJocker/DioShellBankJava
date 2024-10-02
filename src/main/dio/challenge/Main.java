@@ -164,11 +164,16 @@ interface Account {
     public Account deposit(double amount);
     public Account withdraw(double amount);
     public boolean isValidWithdraw(double amount);
+    public boolean isValidTransfer(double amount);
     public Pair<Account, Account> transfer(double amount, Account to);
     Account copyWithAmount(double amount);
 
     public static int newNumber() {
         return number.newNumber();
+    }
+
+    default boolean hasBalance(double amount) {
+	return this.getBalance() >= amount;
     }
     
 }
@@ -224,7 +229,12 @@ class CheckingAccount implements Account {
 
     @Override
     public boolean isValidWithdraw(double amount) {
-	return this.balance >= amount;
+	return this.hasBalance(amount);
+    }
+    
+    @Override
+    public boolean isValidTransfer(double amount){
+	return this.hasBalance(amount);
     }
 
     @Override
@@ -340,15 +350,10 @@ class SavingAccount implements Account {
     public Account deposit(double amount) {
 	return this.copyWithAmount(this.balance + amount);
     }
-
+    
     @Override
-    public boolean isValidWithdraw(double amount) {
-	return this.balance >= amount;
-    }
-
-    @Override
-    public Account withdraw(double amount) {
-	return this.copyWithAmount(this.balance - amount);
+    public boolean isValidTransfer(double amount){
+	return this.hasBalance(amount);
     }
 
     @Override
@@ -357,6 +362,16 @@ class SavingAccount implements Account {
 	
 	Account updatedTo = to.copyWithAmount(to.getBalance() + amount);
 	return new Pair(updatedFrom, updatedTo);
+    }
+
+    @Override
+    public boolean isValidWithdraw(double amount) {
+	return this.hasBalance(amount);
+    }
+    
+    @Override
+    public Account withdraw(double amount) {
+	return this.copyWithAmount(this.balance - amount);
     }
 
     private SavingAccount(
@@ -703,21 +718,23 @@ class AccountMenu extends UserMenu<Account> {
 class CheckingAccountMenu extends UserMenu<CheckingAccount> {
 
     private static final String startMenu =
-	"Balance (1), Loan (2), Deposit (3), Withdraw (4), Back (0)\n";
+	"Balance (1), Loan (2), Deposit (3), Withdraw (4), Transfer (5) Back (0)\n";
     private final LoanIoForm loanForm;
     private final DepositIoForm depositForm;
     private final WithdrawIoForm withdrawForm;
+    private final TransferIoForm transferForm;
     
     CheckingAccountMenu(
 			IoAdapter console,
 			LoanIoForm loanForm,
 			DepositIoForm depositForm,
-			WithdrawIoForm withdrawForm) {
-
+			WithdrawIoForm withdrawForm,
+			TransferIoForm transferForm) {
 	super(console);
 	this.loanForm = loanForm;
 	this.depositForm = depositForm;
 	this.withdrawForm = withdrawForm;
+	this.transferForm = transferForm;
     }
     
     private void balance(Account account) {
@@ -752,6 +769,31 @@ class CheckingAccountMenu extends UserMenu<CheckingAccount> {
 	}
     }
 
+    private void transfer(Service service, CheckingAccount accountFrom) {
+	
+	final Optional<Pair<Double, Account>>  maybeAmountToAccount =
+	    transferForm.collect(new Pair(accountFrom, service));
+
+	if(!maybeAmountToAccount.isPresent()) {
+	    console.printf("Transfer was not completed\n");
+	    return;
+	}
+	final Double validatedTransferAmount =
+	    maybeAmountToAccount.get().getFst();
+	final Account accountTo =
+	    maybeAmountToAccount.get().getSnd();
+
+	final Optional<Account> maybeUpdated =
+	    service.transfer(validatedTransferAmount, accountFrom, accountTo);
+
+	if (!maybeUpdated.isPresent()
+	    || !(maybeUpdated.get() instanceof CheckingAccount)) {
+	    console.printf("Server Error: Transfer was not registered\n");
+	} else {
+	    console.printf("Transfer completed\n");
+	    this.updateSession((CheckingAccount) maybeUpdated.get());
+	}
+    }
     
     private void withdraw(Service service, CheckingAccount account) {
 	
@@ -770,7 +812,7 @@ class CheckingAccountMenu extends UserMenu<CheckingAccount> {
 
     @Override
     public Integer getMenuSize() {
-	return 4;
+	return 5;
     }
     
     @Override
@@ -797,7 +839,9 @@ class CheckingAccountMenu extends UserMenu<CheckingAccount> {
 		deposit(service, current);
 	    } else if (choice == 4) {
 		withdraw(service, current);
-	    }
+	    } else if (choice == 5) {
+		transfer(service, current);
+	    }	    
 	}
 	this.logOffSession();
     }
@@ -806,18 +850,21 @@ class CheckingAccountMenu extends UserMenu<CheckingAccount> {
 class SavingAccountMenu extends UserMenu<SavingAccount> {
 
     private static final String startMenu =
-	"Balance (1), Deposit (2), Withdraw (3), Back (0)\n";
+	"Balance (1), Deposit (2), Withdraw (3), Transfer (4), Back (0)\n";
     private final DepositIoForm depositForm;
     private final WithdrawIoForm withdrawForm;
+    private final TransferIoForm transferForm;
     
     SavingAccountMenu(
 		      IoAdapter console,
 		      DepositIoForm depositForm,
-		      WithdrawIoForm withdrawForm) {
+		      WithdrawIoForm withdrawForm,
+		      TransferIoForm transferForm) {
 
 	super(console);
 	this.depositForm = depositForm;
 	this.withdrawForm = withdrawForm;
+	this.transferForm = transferForm;
     }
 
     private void balance(Account account) {
@@ -853,10 +900,36 @@ class SavingAccountMenu extends UserMenu<SavingAccount> {
 	    this.updateSession((SavingAccount) maybeUpdated.get());
 	}
     }
+    
+    private void transfer(Service service, SavingAccount accountFrom) {
+	
+	final Optional<Pair<Double, Account>>  maybeAmountToAccount =
+	    transferForm.collect(new Pair(accountFrom, service));
 
+	if(!maybeAmountToAccount.isPresent()) {
+	    console.printf("Transfer was not completed\n");
+	    return;
+	}
+	final Double validatedTransferAmount =
+	    maybeAmountToAccount.get().getFst();
+	final Account accountTo =
+	    maybeAmountToAccount.get().getSnd();
+
+	final Optional<Account> maybeUpdated =
+	    service.transfer(validatedTransferAmount, accountFrom, accountTo);
+
+	if (!maybeUpdated.isPresent()
+	    || !(maybeUpdated.get() instanceof SavingAccount)) {
+	    console.printf("Server Error: Transfer was not registered\n");
+	} else {
+	    console.printf("Transfer completed\n");
+	    this.updateSession((SavingAccount) maybeUpdated.get());
+	}
+    }
+    
     @Override
     public Integer getMenuSize() {
-	return 3;
+	return 4;
     }
     
     @Override
@@ -881,6 +954,8 @@ class SavingAccountMenu extends UserMenu<SavingAccount> {
 		deposit(service, current);
 	    } else if (choice == 3) {
 		withdraw(service, current);
+	    } else if (choice == 4) {
+		transfer(service, current);
 	    }
 	}
 	this.logOffSession();
@@ -933,6 +1008,66 @@ class DepositIoForm extends IoForm<Double, Account> {
 	    return maybeDepositAmount.get();
 	}
 	return 0.0;
+    }
+}
+
+
+class TransferIoForm extends IoForm<Optional<Pair<Double, Account>>, Pair<Account, Service>> {
+
+    public TransferIoForm(IoAdapter console) {
+	super(console);
+    }
+
+    @Override
+    public Optional<Pair<Double, Account>> collect(Pair<Account, Service> accountToService) {
+
+	final Account fromAccount = accountToService.getFst();
+	final Service service = accountToService.getSnd();
+
+	console.printf("Transfer:\n");
+	while (true){
+
+	    console.printf("To number Account: ");
+	    final int numberToAccount = console.readNumberUnsigned();
+	    if (numberToAccount <= 0) {
+		console.printf("Invalid account number\n");
+		if (tryAgain()) {
+		    continue ;
+		}
+		else
+		    break ;
+	    }
+
+	    final Optional<Account> maybeToAccount =
+		service.getAccountByNumber(numberToAccount);
+	    if (!maybeToAccount.isPresent()) {
+		console.printf("Account not found\n");
+		if (tryAgain()) {
+		    continue ;
+		}
+		else
+		    break ;
+	    }
+	    final Account toAccount = maybeToAccount.get();
+	    
+	    console.printf("How much would you like to transfer:\n");
+	    console.printf("Balance: %.2f\n", fromAccount.getBalance());
+	    final Optional<Double> maybeTransferAmount =
+		console.readDoublerUnsigned();
+
+	    if (!maybeTransferAmount.isPresent()
+		|| !fromAccount.isValidTransfer(maybeTransferAmount.get())) {
+		console.printf("Invalid transfer\n");
+		if (tryAgain()) {
+		    continue ;
+		}
+		else
+		    break ;
+	    }
+	    final Double transferAmount = maybeTransferAmount.get();
+	    return Optional.of(new Pair(transferAmount, toAccount));
+	}
+	return Optional.empty();
     }
 }
 
@@ -1138,19 +1273,22 @@ class Main {
 	final LoanIoForm loanForm = new LoanIoForm(ioAdapter);
 	final DepositIoForm depositForm = new DepositIoForm(ioAdapter);
 	final WithdrawIoForm withdrawForm = new WithdrawIoForm(ioAdapter);
+	final TransferIoForm transferForm = new TransferIoForm(ioAdapter);
 	
 	final CheckingAccountMenu chekingAccountMenu =
 	    new CheckingAccountMenu(
 				    ioAdapter,
 				    loanForm,
 				    depositForm,
-				    withdrawForm);
+				    withdrawForm,
+				    transferForm);
 
 	final SavingAccountMenu savingAccountMenu =
 	    new SavingAccountMenu(
 				  ioAdapter,
 				  depositForm,
-				  withdrawForm);
+				  withdrawForm,
+				  transferForm);
 
 	final AccountMenu accountMenu =
 	    new AccountMenu(ioAdapter, chekingAccountMenu, savingAccountMenu);
